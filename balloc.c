@@ -103,22 +103,22 @@ static size_t balloc_block_level(const struct balloc_cb *cb, size_t size)
 	return level;
 }
 
-static size_t balloc_block_parent(size_t idx)
+static size_t balloc_block_parent_idx(size_t idx)
 {
 	return (idx - 1) / 2;
 }
 
-static size_t balloc_block_buddy(size_t idx)
+static size_t balloc_block_buddy_idx(size_t idx)
 {
 	return ((idx - 1) ^ 1) + 1;
 }
 
-static size_t balloc_block_child_left(size_t idx)
+static size_t balloc_block_child_left_idx(size_t idx)
 {
 	return idx * 2 + 1;
 }
 
-static size_t balloc_block_child_right(size_t idx)
+static size_t balloc_block_child_right_idx(size_t idx)
 {
 	return idx * 2 + 2;
 }
@@ -166,7 +166,7 @@ static struct list_entry *balloc_alloc_split(struct balloc_cb *cb, size_t target
 	size_t block_idx;
 	size_t size;
 
-	while (level >= 0) {
+	while (true) {
 		free_blocks_head = &cb->free_blocks[level];
 
 		if (!list_is_empty(free_blocks_head) || !level)
@@ -180,7 +180,7 @@ static struct list_entry *balloc_alloc_split(struct balloc_cb *cb, size_t target
 
 	free_block = list_pop_head(free_blocks_head);
 	block_idx = balloc_block_to_idx(cb, free_block, level);
-	size = cb->min_block_size * POW2(cb->level_count - level - 1);
+	size = balloc_block_level_size(cb, level);
 
 	while (level < target_level) {
 		struct list_entry *buddy;
@@ -193,10 +193,10 @@ static struct list_entry *balloc_alloc_split(struct balloc_cb *cb, size_t target
 		buddy = (struct list_entry *)((uintptr_t)free_block + size);
 		list_add_head(free_blocks_head, (struct list_entry *)buddy);
 
-		block_idx = balloc_block_child_left(block_idx);
+		block_idx = balloc_block_child_left_idx(block_idx);
 	}
 
-	printf("balloc_alloc_split %u %u %u\n", level, block_idx, size);
+	printf("balloc_alloc_split %zu %zu %zu\n", level, block_idx, size);
 
 	balloc_block_state_used_set(cb, block_idx);
 	return free_block;
@@ -232,7 +232,7 @@ static size_t balloc_block_get_level(struct balloc_cb *cb, const void *block, si
 	size_t idx = balloc_block_to_idx(cb, block, level);
 
 	while (!balloc_block_is_used(cb, idx) && level > 0) {
-		idx = balloc_block_parent(idx);
+		idx = balloc_block_parent_idx(idx);
 		level--;
 	}
 
@@ -241,27 +241,47 @@ static size_t balloc_block_get_level(struct balloc_cb *cb, const void *block, si
 	return level;
 }
 
+static struct list_entry *balloc_block_buddy(struct list_entry *block, size_t idx, size_t size)
+{
+	if (idx % 2)
+		return (struct list_entry *)((uintptr_t)block + size);
+	else
+		return (struct list_entry *)((uintptr_t)block - size);
+}
+
 void balloc_free(struct balloc_cb *cb, void *ptr)
 {
-	size_t level;
+	struct list_entry *block = (struct list_entry *)ptr;
 	size_t idx = 0;
+	size_t level;
+	size_t size;
 
-	if (!ptr)
+	if (!block)
 		return;
 
-	level = balloc_block_get_level(cb, ptr, &idx);
-	balloc_block_state_used_clear(cb, idx);
+	level = balloc_block_get_level(cb, block, &idx);
+	size = balloc_block_level_size(cb, level);
 
-	if (level == 0)
-		return;
+	while (true) {
+		size_t buddy_idx = balloc_block_buddy_idx(idx);
+		struct list_entry *buddy_block;
 
-	if (balloc_block_is_used(cb, balloc_block_buddy(idx))) {
-		struct list_entry *free_blocks_head = &cb->free_blocks[level];
+		balloc_block_state_used_clear(cb, idx);
 
-		list_add_head(free_blocks_head, (struct list_entry *)ptr);
-		return;
+		printf("balloc_free %zu %zu %zu\n", level, size, idx);
+
+		if (!level || balloc_block_is_used(cb, buddy_idx)) {
+			struct list_entry *free_blocks_head = &cb->free_blocks[level];
+
+			list_add_head(free_blocks_head, block);
+			break;
+		}
+
+		buddy_block = balloc_block_buddy(block, idx, size);
+		list_del(buddy_block);
+
+		level--;
+		size *= 2;
+		idx = balloc_block_parent_idx(idx);
 	}
-
-	/* TODO: buddy merge procedure */
-
 }
