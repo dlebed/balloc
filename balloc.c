@@ -158,6 +158,15 @@ static size_t balloc_block_to_idx(const struct balloc_cb *cb, const void *block,
 	return idx;
 }
 
+static struct list_entry *balloc_block_from_idx(struct balloc_cb *cb, size_t idx, size_t level)
+{
+	const size_t idx_base = POW2(level) - 1;
+	const size_t size = balloc_block_level_size(cb, level);
+
+	return (struct list_entry *)((uintptr_t)cb->mem_pool + size * (idx - idx_base));
+
+}
+
 static struct list_entry *balloc_alloc_split(struct balloc_cb *cb, size_t target_level)
 {
 	struct list_entry *free_blocks_head;
@@ -241,14 +250,6 @@ static size_t balloc_block_get_level(struct balloc_cb *cb, const void *block, si
 	return level;
 }
 
-static struct list_entry *balloc_block_buddy(struct list_entry *block, size_t idx, size_t size)
-{
-	if (idx % 2)
-		return (struct list_entry *)((uintptr_t)block + size);
-	else
-		return (struct list_entry *)((uintptr_t)block - size);
-}
-
 void balloc_free(struct balloc_cb *cb, void *ptr)
 {
 	struct list_entry *block = (struct list_entry *)ptr;
@@ -277,11 +278,14 @@ void balloc_free(struct balloc_cb *cb, void *ptr)
 			break;
 		}
 
-		buddy_block = balloc_block_buddy(block, idx, size);
+		buddy_block = balloc_block_from_idx(cb, buddy_idx, level);
 		list_del(buddy_block);
 
 		level--;
 		size *= 2;
 		idx = balloc_block_parent_idx(idx);
+		block = balloc_block_from_idx(cb, idx, level);
 	}
+
+	printf("balloc_free ---\n");
 }
