@@ -12,6 +12,7 @@ struct balloc_cb {
 
 	struct list_entry *free_blocks;	/* array of per-level free block lists */
 	uint8_t	*block_state_map;	/* bitmap with state of block pairs */
+	uint8_t *mem_pool;
 };
 
 int balloc_cb_init(struct balloc_cb *cb, size_t pool_size, size_t min_block_size);

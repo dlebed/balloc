@@ -4,7 +4,6 @@
 
 #include "balloc.h"
 
-
 int main(void)
 {
 	struct balloc_cb cb;
@@ -17,10 +16,22 @@ int main(void)
 	if (res)
 		return res;
 
-	buf = balloc_alloc(&cb, 3000);
+	buf = balloc_alloc(&cb, 2048);
+	printf("%u\n", buf ? buf - cb.mem_pool : -1);
 
-	if (!buf)
-		printf("NULL\n");
+	buf = balloc_alloc(&cb, 2048);
+	printf("%u\n", buf ? buf - cb.mem_pool : -1);
+
+	balloc_free(&cb, buf);
+
+	buf = balloc_alloc(&cb, 2048);
+	printf("%u\n", buf ? buf - cb.mem_pool : -1);
+
+	buf = balloc_alloc(&cb, 2048);
+	printf("%u\n", buf ? buf - cb.mem_pool : -1);
+
+	buf = balloc_alloc(&cb, 4096);
+	printf("%u\n", buf ? buf - cb.mem_pool : -1);
 
 	balloc_free(&cb, buf);
 
